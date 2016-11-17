@@ -20,20 +20,38 @@ if __name__ == '__main__':
 
     try:
         node_id = int(args.ID)
+        nodes_raw= nodist_helper.readFromFile(data)
+        host,port= nodist_helper.getAddress(nodes_raw,node_id)  
         if (args.start=='true'):
                     
             node = NodeServer(node_id,data)
             
-            msg = Message(MessageType.Neighbour,"Geiz ist Geil", 0)
-            nodist_helper.sendInitSpreadMsg(node, msg)
+            
+            
             
         else:
             menu = 1
             while (menu!=0):
                 try:
                     menu = nodist_helper.menu()
+                    if menu == 0: break
                     if menu == 1:
                         subprocess.Popen('py __init__.py data 5 --start true', creationflags = subprocess.CREATE_NEW_CONSOLE)
+                    elif menu == 2:
+                        for node in nodes_raw:
+                            id_str = str(node[0])
+                            subprocess.Popen("py __init__.py data "+ id_str +" --start true", creationflags = subprocess.CREATE_NEW_CONSOLE)
+                    
+                    elif menu == 3:
+                        msg = Message(MessageType.shutdown,"Geiz ist Geil", 0)
+                        nodist_helper.sendMsg(host,port, msg)
+                    elif menu == 4:
+                        msg = Message(MessageType.shutdownAll,"Geiz ist Geil", 0)
+                        nodist_helper.sendMsg(host,port, msg)
+                        
+                    elif menu == 7:                       
+                        msg = Message(MessageType.sendID,"Geiz ist Geil", 0)
+                        nodist_helper.sendMsg(host,port, msg)
                     else:
                         print("Fehlerhafte Eingabe")
                 except ValueError:

@@ -8,11 +8,14 @@ from enum import Enum
 import uuid
 
 class MessageType(Enum):
+    ID = 0
     sendID = 1
-    initSpread = 2
-    spreadMsg = 3
-    shutdown = 4
-    Neighbour = 5
+    spreadMsg = 2
+    shutdown = 3
+    shutdownAll = 4
+    neighbour = 5
+    printNeighbours = 6
+    
 class Message:
     
 
