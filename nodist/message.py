@@ -15,6 +15,8 @@ class MessageType(Enum):
     shutdownAll = 4
     neighbour = 5
     printNeighbours = 6
+    status = 7
+    reset = 8
     
 class Message:
     

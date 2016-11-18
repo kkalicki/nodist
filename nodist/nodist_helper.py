@@ -7,6 +7,7 @@ Created on 17.11.2016
 import pickle
 import socket
 import random
+from graphviz import Source, Graph
 from node import NodeServer
 
 
@@ -16,9 +17,12 @@ def menu():
     print("2: alle Nodes starten")
     print("3: Node beenden")
     print("4: alle Nodes beenden")
-    print("5: Geheimnis senden")
+    print("5: Geruecht senden")
     print("6: Nachbar")
     print("7: ID Nachbarn Senden")
+    print("8: Status")
+    print("9: Reset")
+    print("10: Reset all")
     print("0: Beenden")
     menu = input("->   :")
     return int(menu)
@@ -31,11 +35,16 @@ def sendMsg(host,port, msg):
         try:
             sock.connect((host, port))
             sock.sendall(pickle_string)
-            data = sock.recv(1024)
+            #data = sock.recv(1024)
+        except OSError as err:
+            print("OS error: {0}".format(err))
+        except socket.error as exc:
+            print("Caught exception socket.error : ", exc)
+            print("Node " + host + str(port)+  " nicht erreichbar")
         finally:
             sock.close()
             
-        print('Client Received', repr(data))
+        #print('Client Received', repr(data))
         
 def readFromFile(file):            
         with open(file, 'r') as node_file:
@@ -74,4 +83,69 @@ def getRandomNeighbourToNode(nodes, node, neighbour_number, file):
     
    
 
+
+def graphFromFile(file):            
+    with open(file, 'r') as dotfile:
+        src = Source(dotfile.read())
+        dotfile.close
+    return src
+
+
+
+def graphgen(nodes,edges_max):
+    dot = Graph(comment='Nodes', format='png')
+    edges_actual=0
+    stNodesIDs = []
+    neighbours = []
+    node_id=1
+    while(edges_actual<edges_max):
+        if (edges_actual<len(nodes)-1):            
+            j=node_id;
+            if not stNodesIDs:
+                stNodesIDs.append(j)
+                neighbours.append((j,node_id))
+            while(j==node_id):
+                j=random.randint(1, len(nodes))
+            if not j in stNodesIDs:
+                stNodesIDs.append(j)
+                neighbours.append((j,node_id))
+                dot.edge(str(node_id), str(j))
+                edges_actual=edges_actual+1
+            node_id=j # Einruecken fuer Eulerpfad
+                
+                
+        else:        
+            node_id = random.randint(1, len(nodes))
+            j=node_id;
+            while(j==node_id):
+                j=random.randint(1, len(nodes))
+            if (edges_actual>=edges_max):
+                break
+            else:
+                if not(node_id, j) in neighbours: 
+                    if not(j, node_id) in neighbours:
+                        dot.edge(str(node_id), str(j))
+                        edges_actual=edges_actual+1
+                        neighbours.append((j,node_id))
+             
+                    
+    return dot, neighbours
+
+
+def getNeighboursFromGraph(graph,node_id):
+    neighbour_ids=[]
+    for str in graph.source.splitlines():
+        if '--' in str: 
+            str1 = str.strip(';').split()
+            neighbour = [int(s) for s in str1 if s.isdigit()]
+            #print(neighbour)
+            if node_id in neighbour:
+                if node_id == neighbour[0]:
+                    neighbour_ids.append(neighbour[1])
+                else:
+                    neighbour_ids.append(neighbour[0])
+                    
+                    
+    return neighbour_ids
+                    
 
