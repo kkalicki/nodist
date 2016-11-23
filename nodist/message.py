@@ -17,6 +17,8 @@ class MessageType(Enum):
     printNeighbours = 6
     status = 7
     reset = 8
+    sendStatus=9
+    startTest=10
     
 class Message:
     
