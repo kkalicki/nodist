@@ -7,10 +7,11 @@ Created on 17.11.2016
 import socket
 import multiprocessing
 import datetime
-import pickle#helper
+import pickle  # helper
 import nodist_helper
-from message import Message, MessageType
-from node_window import NodeWindow
+import threading
+from message import Message, MessageType, NodeMessage
+from multiprocessing import Queue
 
 class Node(object):
     '''
@@ -33,8 +34,6 @@ class Node(object):
 
 
     def addNeighbourNode(self, node):
-        if self.ID == node.ID:
-            print('kacke')
         if not node.ID in [n.ID for n in self.neighbour]:
             self.neighbour.append(node)
             self.neighboursCount += 1
@@ -48,18 +47,21 @@ class Node(object):
 
 class NodeServer(Node, multiprocessing.Process):
     
-    def __init__(self, node_id, file, graph_file='Graph.gv', start=True):
+    def __init__(self, node_id, file, graph_file='Graph.gv', start=True, believingThreshold=4):
         multiprocessing.Process.__init__(self)
         Node.__init__(self, node_id)
-        self.graph_file=graph_file
+        self.messages = []
+        self.msg_queue = Queue()
+        self.graph_file = graph_file
         self.online = start
         self.file = file
-        self.getSecret = 0
-        self.heard_from = []
         self.believe = False
-        self.believingThreshold = 4
-        self.last_status_print = datetime.datetime.now() + datetime.timedelta(minutes=-1)
-        self.last_reset = datetime.datetime.now() + datetime.timedelta(minutes=-1)
+        self.believingThreshold = believingThreshold
+        for i in range(20):
+            worker = threading.Thread(target=self.startQueue, args=(self.msg_queue,))
+            worker.setDaemon(True)
+            worker.start()
+        # threading.Thread(self.startQueue, args=(self.msg_queue,)).start()
         
         nodes_raw = nodist_helper.readFromFile(file)
         self.host, self.port = nodist_helper.getAddress(nodes_raw, node_id)
@@ -73,32 +75,34 @@ class NodeServer(Node, multiprocessing.Process):
             neighbour_ids = nodist_helper.getNeighboursFromGraph(graph, self.ID)
             self.addNeighboursToNode(nodes_raw, neighbour_ids, file)
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            
             #nodist_helper.getRandomNeighbourToNode(nodes_raw,self,3,file) ##### 
             self.start()
             
     
     def run(self):
             try: 
-                node_window= NodeWindow()
-                node_window.add("ServerNode " + str(self.ID) + " wurde gestartet:" + self.host + str(self.port))
+                # print("ServerNode " + str(self.ID) + " wurde gestartet:" + self.host + str(self.port))
                 self.sock.bind((self.host, self.port))
                 self.sock.listen()
                 while self.online:
                     conn, addr = self.sock.accept()
                     with conn:
-                        node_window.add("ServerNode " + str(self.ID) + ' Connected by' + str(addr))
+                        # print("ServerNode " + str(self.ID) + ' Connected by' + str(addr))
                         data, recv_time = conn.recv(1024), datetime.datetime.now()
                         if not data: break
                         # conn.send(b'Alles klar von Node '+ bytes(str(self.ID),'utf-8'))
-                        node_window.add('Node ' + str(self.ID) + ' Server received Message at ' + str(recv_time))
-                        msg = pickle.loads(data)
-                        #msg.printMessage()
-                        #if msg.m_created_from == 0: msg.m_created_from =self.ID
-                        self.handleMessages(msg, self.file, node_window)
+                        # print('Node ' + str(self.ID) + ' Server received Message at ' + str(recv_time))
+                        
+                        # msg.printMessage()
+                        # if msg.m_created_from == 0: msg.m_created_from =self.ID
+                        # self.handleMessage(msg)
+                        threading.Thread(target=self.handleRequest, args=(data,)).start()
+                        conn.close()
             except OSError as err:
-                node_window.add("OS error: {0}".format(err))
+                print("Node Server"+str(self.ID)+"OS error: {0}".format(err))
             except socket.error as exc:
-                node_window.add("Caught exception socket.error : " + str(exc))
+                print("Caught exception socket.error : " + str(exc))
             finally:
                 self.sock.close()
     
@@ -106,19 +110,23 @@ class NodeServer(Node, multiprocessing.Process):
         self.online = False
         self.sock.close()
         
-    def printNeighbours(self, node_window):
-        node_window.add("Neighbours from Node with ID: " + str(self.ID))
+    def printNeighbours(self):
+        print("Neighbours ("+str(len(self.neighbour))+") from Node with ID: " + str(self.ID))
         for neighbour in self.neighbour:
-            neighbour.printNode(node_window)
+            neighbour.printNode()
             
-    def printNode(self,node_window):
-        node_window.add("ID : "+ str(self.ID)+" host : "+ self.host + " PORT :"+ str(self.port))
+            
+    def printNode(self):
+        print("ID : " + str(self.ID) + " host : " + self.host + " PORT :" + str(self.port))
 
 
               
-    def sendMsgToNode(self, node, m_type, msg_m, node_window):
-        new_msg = Message(m_type, msg_m, self.ID)
-        pickle_string = pickle.dumps(new_msg)
+    def sendMsgToNode(self, node, msg):
+        msg.sender_nodeID = self.ID
+        msg.receiver_nodeID = node.ID
+        
+
+        pickle_string = pickle.dumps(msg)
         pickle.loads(pickle_string)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
@@ -126,82 +134,98 @@ class NodeServer(Node, multiprocessing.Process):
                 sock.sendall(pickle_string)
                 # data = sock.recv(1024)
             except OSError as err:
-                node_window.add("OS error: {0}".format(err))
+                print("Node Client "+str(self.ID)+" OS error: {0}".format(err))
+                print("Node " + str(node.ID) + " nicht erreichbar")
             except socket.error as exc:
-                node_window.add("Caught exception socket.error : " + str(exc))
-                node_window.add("Node " + node.ID + " nicht erreichbar")
+                print("Caught exception socket.error : " + str(exc))
+                print("Node " + str(node.ID) + " nicht erreichbar")
             finally:
                 sock.close()
                 
             # print('Node ' + str(self.ID) + ' Client Received', repr(data))
              
               
-    def sendIDToNeighbourNodes(self, node_window):
+    def sendIDToNeighbourNodes(self):
         for node in self.neighbour:
-            self.sendMsgToNode(node, MessageType.ID, (self.ID, self.host, self.port), node_window)
+            msg = Message(MessageType.ID, (self.ID, self.host, self.port), self.ID, node.ID)
+            self.sendMsgToNode(node, msg)
             
          
-    def spread(self, msg,msg_m,node_window):
+    def spread(self, msg):
         for node in self.neighbour:
-            if not node.ID == msg.sender_nodeID:
-                self.sendMsgToNode(node, msg.m_type,msg_m, node_window)
+            if not node.ID == msg.recieved_from:
+                self.sendMsgToNode(node, msg.msg)
+                
+    def startQueue(self, msg_queue):
+        """This is the worker thread function.
+        It processes items in the queue one after
+        another.  These daemon threads go into an
+        infinite loop, and only exit when
+        the main thread ends.
+        """
+        while True:
+            msg = msg_queue.get()
+            self.handleMessage(msg)
+            # msg_queue.task_done()
 
-    def handleMessages(self, msg, file, node_window):
-        #if msg.m_type == MessageType.ID:
+    def handleRequest(self, data):
+        msg = pickle.loads(data)
+        found = False
+        for node_message in self.messages:
+            if msg == node_message.msg:
+                node_message.counter += 1
+                found = True
+                break
+        if found == False:
+            self.messages.append(NodeMessage(msg))
+            for node_message in self.messages:
+                if msg == node_message.msg:
+                    msg=node_message
+                    break  
+                
+            if msg.msg.m_type == MessageType.sendStatus:
+                for node_message in self.messages:
+                    if node_message.msg.m_type == MessageType.spreadRumour:
+                        msg.msg.m = (node_message.counter, len(self.neighbour))
+                        break
+                 
+            self.msg_queue.put(msg)
+
+            
+            
+    def handleMessage(self, msg):
+        # if msg.m_type == MessageType.ID:
             #self.addNeighbourNode(NodeServer(msg.sender_nodeID, file, start=False))  ####!!!!!!!!!!!!!!!!!!!!!!!!!
         
-        if msg.m_type == MessageType.sendID:
-            self.sendIDToNeighbourNodes(node_window)
+        if msg.msg.m_type == MessageType.sendID:
+            self.sendIDToNeighbourNodes()
             
-        elif msg.m_type == MessageType.shutdown:
-            node_window.add(str(msg.m_type))
+        elif msg.msg.m_type == MessageType.shutdown:
+            print(str(self.ID) + str(msg.msg.m_type))
             self.closeNodeServer()
             
-        elif msg.m_type == MessageType.shutdownAll:
-            node_window.add(msg.m_type)
-            self.spread(msg, msg.m, node_window)
+        elif msg.msg.m_type == MessageType.shutdownAll:
+            print(msg.msg.m_type)
+            self.spread(msg)
             self.closeNodeServer()
             
-        elif msg.m_type == MessageType.spreadMsg:
-
-            if self.getSecret == 0: 
-                self.spread(msg,msg.m, node_window)   
-            if self.getSecret >= self.believingThreshold:
-                self.believe = True
-                node_window.add("Glaube das Geruecht")
-            self.heard_from.append(msg.sender_nodeID)       
-            self.getSecret += 1
+        elif msg.msg.m_type == MessageType.spreadRumour:
+            self.spread(msg)   
                 
-        elif msg.m_type == MessageType.status:
-            diff = datetime.datetime.now() - self.last_status_print
-            if diff.total_seconds() > 5:
-                node_window.add("Status:")
-                self.printNode(node_window)
-                node_window.add("geruecht gehoert: " + str(self.getSecret))
-                node_window.add(''.join(str(nid) for nid in self.heard_from))
-                if self.believe: node_window.add("Ich glaube das Geruecht")
-                self.spread(msg,msg.m, node_window)
-                self.last_status_print = datetime.datetime.now()
-            else:
-                node_window.add("Statusnachricht nur alle 5 Sekunden")
+        elif msg.msg.m_type == MessageType.status:
+            print("Status:")
+            self.printNode()
         
-        elif msg.m_type == MessageType.reset:
-            diff = datetime.datetime.now() - self.last_reset
-            if diff.total_seconds() > 5:
-                self.getSecret=0
-                self.believe=False
-                node_window.add("reset done....")
+        elif msg.msg.m_type == MessageType.reset:
+            self.messages = []
+            self.messages.append(NodeMessage(msg))
+            print("reset done....")
                 
-        elif msg.m_type == MessageType.printNeighbours:
-            self.printNeighbours(node_window)
+        elif msg.msg.m_type == MessageType.printNeighbours:
+            self.printNeighbours()
             
-        elif msg.m_type == MessageType.sendStatus:
-            diff = datetime.datetime.now() - self.last_status_print
-            if diff.total_seconds() > 20:
+        elif msg.msg.m_type == MessageType.sendStatus:
+                nodist_helper.sendMsgServer('localhost', 42222, msg.msg.m_type, msg.msg.m, self.ID)
+                self.spread(msg)
                 
-                self.spread(msg,msg.m,node_window)
-                nn_ids = [n.ID for n in self.neighbour]
-                nodist_helper.sendMsgServer('localhost', 42222, msg.m_type,self.getSecret,self.ID, node_window)
-                self.last_status_print = datetime.datetime.now()
-            else:
-                node_window.add("senden der Statusnachricht an testserver nur alle 20 Sekunden")  
+        #if not message sent queue put

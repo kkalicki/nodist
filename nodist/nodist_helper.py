@@ -22,8 +22,8 @@ def readFromFile(file):
         node_file.close()
     return nodes
 
-def sendMsgServer(host,port,m_type, msg_m, node_id, node_window):
-    new_msg = Message(m_type, msg_m, node_id)
+def sendMsgServer(host,port,m_type, msg_m, node_id):
+    new_msg = Message(m_type, msg_m, node_id, 0)
     pickle_string = pickle.dumps(new_msg)
     pickle.loads(pickle_string)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -32,10 +32,10 @@ def sendMsgServer(host,port,m_type, msg_m, node_id, node_window):
             sock.sendall(pickle_string)
             #data = sock.recv(1024)
         except OSError as err:
-            node_window.add("OS error: {0}".format(err))
+            print("TESTSERVER OS error: {0}".format(err))
         except socket.error as exc:
-            node_window.add("Caught exception socket.error : ", exc)
-            node_window.add("Node " + host + str(port)+  " nicht erreichbar")
+            print("Caught exception socket.error : ", exc)
+            print("Node " + host + str(port)+  " nicht erreichbar")
         finally:
             sock.close()
             
@@ -51,9 +51,10 @@ def sendMsg(host,port,msg):
             #data = sock.recv(1024)
         except OSError as err:
             print("OS error: {0}".format(err))
+            print(" nicht erreichbar")
         except socket.error as exc:
             print("Caught exception socket.error : ", exc)
-            print("Node " + host + str(port)+  " nicht erreichbar")
+            print(host + str(port)+  " nicht erreichbar")
         finally:
             sock.close()
             

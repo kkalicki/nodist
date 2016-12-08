@@ -10,7 +10,6 @@ import nodist_helper
 from message import Message,MessageType
 import datetime
 import threading
-from node_window import NodeWindow
 import pickle
 import time
 
@@ -27,7 +26,7 @@ class NodistMenu(object):
         self.host, self.port = nodist_helper.getAddress(self.nodes_raw, self.node_id)
                 
         print("Nodist "+ str(node_id))
-        menu_dict = dict(enumerate([("Beenden",None),
+        menu_dict = dict(enumerate([("Beenden",),
                            ("lokale Node starten",self.startNode),
                            ("alle Nodes starten",self.startAllNodes),
                            ("Node beenden",self.shutdownNode),
@@ -41,7 +40,8 @@ class NodistMenu(object):
                            ("graphfile",self.getGraphFile),
                            ("graphgen",self.graphgen),
                            ("Start Testserver",self.startTestServer),
-                           ("Sende jeden Status zum Testserver", self.sendStatusServer),
+                           ("jeden Status zum Testserver", self.sendStatusServer),
+                           ("Status vom Testserver", self.statusServer),
                            ("Start Tests",self.startTests)]
                                )
                      )
@@ -53,8 +53,10 @@ class NodistMenu(object):
         self.menu_int = int(input("->   :"))
         menu_choice = menu_dict.get(self.menu_int)
         print(menu_choice[0])
-        if menu_choice != None:
-            menu_choice[1]()
+        if menu_choice != menu_dict[0]:
+            if menu_choice != None:
+                menu_choice[1]()
+
 
     
     def startNode(self):
@@ -70,42 +72,46 @@ class NodistMenu(object):
             node = NodeServer(node[0], file)
     
     def shutdownNode(self):
-        msg = Message(MessageType.shutdown, "Geiz ist Geil", 0)
+        msg = Message(MessageType.shutdown, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def shutdownAllNodes(self):
-        msg = Message(MessageType.shutdownAll, "Geiz ist Geil", 0)
+        msg = Message(MessageType.shutdownAll, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendRumour(self):
-        msg = Message(MessageType.spreadMsg, "Geiz ist Geil", 0)
+        msg = Message(MessageType.spreadRumour, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendPrintNeighbours(self):
-        msg = Message(MessageType.printNeighbours, "Geiz ist Geil", 0)
+        msg = Message(MessageType.printNeighbours, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendIDs(self):
-        msg = Message(MessageType.sendID, "Geiz ist Geil", 0)
+        msg = Message(MessageType.sendID, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendStatus(self):
-        msg = Message(MessageType.status, "Geiz ist Geil", 0)
+        msg = Message(MessageType.status, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
         
     def sendStatusServer(self):
-        msg = Message(MessageType.sendStatus, "Geiz ist Geil", 0)
+        msg = Message(MessageType.sendStatus, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
+        
+    def statusServer(self):
+        msg = Message(MessageType.status, "Geiz ist Geil", 0, self.node_id)
+        nodist_helper.sendMsg('localhost', 42222, msg)
     
     def sendReset(self):
-        msg = Message(MessageType.reset, "Geiz ist Geil", 0)
+        msg = Message(MessageType.reset, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendResetAll(self):
         for node in self.nodes_raw:
             node_id = node[0]
             host, port = nodist_helper.getAddress(self.nodes_raw, node_id)                        
-            msg = Message(MessageType.reset, "Geiz ist Geil", 0)
+            msg = Message(MessageType.reset, "Geiz ist Geil", 0, self.node_id)
             nodist_helper.sendMsg(host, port, msg)
     
     
@@ -113,7 +119,7 @@ class NodistMenu(object):
         pass
     
     def graphgen(self):
-        nodist_helper.graphgen(self.nodes_raw, 10)
+        nodist_helper.graphgen(self.nodes_raw, 190)
     
     def startTests(self):
         self.startTestServer()
@@ -122,7 +128,7 @@ class NodistMenu(object):
         m_max = (len(nodes_raw) * (len(nodes_raw)-1))/2
         #nodist_helper.graphgen(nodes_raw, m_max)
         time.sleep(1)
-        new_msg = Message(MessageType.startTest,(1,len(nodes_raw)),0)
+        new_msg = Message(MessageType.startTest,(1,len(nodes_raw)), 0, self.node_id)
         nodist_helper.sendMsg('localhost', 42222, new_msg)
         time.sleep(1)
         self.startAllNodesTests(file, nodes_raw)
@@ -136,6 +142,28 @@ class NodistMenu(object):
         time.sleep(1)
 
     
+
+    def testServerHandler(self, msgs, data):
+        msg = pickle.loads(data)
+    #msg.printMessage()
+        table = '\n'
+        sum = 0
+        if msg.m_type == MessageType.status:
+            msgs_sort = sorted(msgs, key=lambda msg:msg.sender_nodeID)
+            for m in msgs_sort:
+                table += '\t' + str(m.sender_nodeID)
+            
+            table += '\n'
+            for m in msgs_sort:
+                table += '\t' + str(m.m[0])
+                sum += m.m[0]
+            
+            table += '\t' + str(sum)
+            table += '\n'
+            print(table)
+        else:
+            msgs.append(msg)
+
     def startTestServer(self, start=True):
         if start:
             start=False
@@ -144,32 +172,20 @@ class NodistMenu(object):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 try: 
                     host, port = 'localhost', 42222
-                    node_window= NodeWindow()
-                    node_window.add("Testserver wurde gestartet:" + host +' '+ str(port))
+                    print("Testserver wurde gestartet:" + host +' '+ str(port))
                     sock.bind((host, port))
                     sock.listen()
-                    test_rslt = {}
-                    count=0
-                    length = 1000
+                    msgs = []
                     while True:
                         conn, addr = sock.accept()
                         with conn:
-                            node_window.add("Testserver Connected b"+ str(addr))
+                            #print("Testserver Connected b"+ str(addr))
                             data, recv_time = conn.recv(1024), datetime.datetime.now()
                             if not data: break
-                            msg = pickle.loads(data)
-                            #msg.printMessage()
-                            if msg.m_type == MessageType.startTest:
-                                count=0
-                                test = msg.m[0]
-                                length = msg.m[1]
-                                test_rslt = {}
-                            if msg.m_type == MessageType.sendStatus:
-                                test_rslt[msg.sender_nodeID]=msg.m
-                                #node_window.add(str(msg.m))
-                            if len(test_rslt) == length:
-                                node_window.add(str(test_rslt))                            
-                                
+                            
+                            
+                            threading.Thread(target=self.testServerHandler, args=(msgs, data,)).start()
+                            conn.close()
                             # conn.send(b'Alles klar von Node '+ bytes(str(self.ID),'utf-8'))
                 finally:
                     sock.close()    
