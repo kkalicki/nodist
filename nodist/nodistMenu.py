@@ -7,6 +7,7 @@ import threading
 import pickle
 import configparser
 
+
 class NodistMenu(object):
     '''
     Stellt das Menue von dem Programm dar.
@@ -157,8 +158,10 @@ class NodistMenu(object):
         generiert einen neuen Graphen
         '''
         edges = int(input("Anzahl Kanten angeben:"))
-        nodist_helper.graphgen(self.nodes_raw, edges)
-        
+        if (edges < (len(self.nodes_raw)*(len(self.nodes_raw)-1)/2)):
+            nodist_helper.graphgen(self.nodes_raw, edges)
+        else:
+            print("maximal ",int(((len(self.nodes_raw)*(len(self.nodes_raw)-1)/2))),"Kanten erlaubt")
 
 
     def testServerHandler(self, msgs, data):

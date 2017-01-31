@@ -56,7 +56,7 @@ class NodeServer(Node, multiprocessing.Process):
     
 
     def __init__(self, node_id, file, start=True):
-        multiprocessing.Process.__init__(self)
+        multiprocessing.Process.__init__(self, daemon=True)
         Node.__init__(self, node_id)
         
         self.nodes_raw = nodist_helper.readFromFile(file)
@@ -72,7 +72,6 @@ class NodeServer(Node, multiprocessing.Process):
             self.trusted_messages = []
             #nodist_helper.getRandomNeighbourToNode(nodes_raw,self,3,file) ##### 
             self.setNeighbours(self.graph_file,file)
-            
             self.start()
             
     #startet neuen Prozess
