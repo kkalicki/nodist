@@ -1,21 +1,16 @@
-'''
-Created on 22.11.2016
-
-@author: Horst
-'''
-
-from node import NodeServer,Node
+from node import NodeServer
 import socket
 import nodist_helper
 from message import Message,MessageType
 import datetime
 import threading
 import pickle
-import time
+import configparser
 
 class NodistMenu(object):
     '''
-    classdocs
+    Stellt das Menue von dem Programm dar.
+    Beim initialisieren wird das menue ausgerufen
     '''
 
 
@@ -24,6 +19,9 @@ class NodistMenu(object):
         self.file = file
         self.node_id = node_id
         self.host, self.port = nodist_helper.getAddress(self.nodes_raw, self.node_id)
+        self.runningNodes = []
+        self.config = configparser.ConfigParser()
+        self.config.read('config.ini')
                 
         print("Nodist "+ str(node_id))
         menu_dict = dict(enumerate([("Beenden",),
@@ -32,17 +30,17 @@ class NodistMenu(object):
                            ("Node beenden",self.shutdownNode),
                            ("alle Nodes beenden",self.shutdownAllNodes),
                            ("Geruecht senden",self.sendRumour),
-                           ("Nachbar",self.sendPrintNeighbours),
+                           ("vertraute Nachrichten",self.showTrustedMsgs),
+                           ("Nachbarn ausgeben",self.sendPrintNeighbours),
                            ("ID Nachbarn Senden",self.sendIDs),
                            ("Status",self.sendStatus),
                            ("Reset",self.sendReset),
                            ("Reset all",self.sendResetAll),
-                           ("graphfile",self.getGraphFile),
                            ("graphgen",self.graphgen),
                            ("Start Testserver",self.startTestServer),
                            ("jeden Status zum Testserver", self.sendStatusServer),
-                           ("Status vom Testserver", self.statusServer),
-                           ("Start Tests",self.startTests)]
+                           ("beende Testserver", self.shutdownServer),
+                           ("Status vom Testserver", self.statusServer)]
                                )
                      )
         
@@ -60,123 +58,158 @@ class NodistMenu(object):
 
     
     def startNode(self):
+        '''
+        startet den Startknoten mit zugehoerigen Server 
+        '''
         NodeServer(self.node_id,self.file)
     
     def startAllNodes(self):
-        
+        '''
+        startet alle Knoten mit zugehoerigen Server 
+        '''
         for node in self.nodes_raw:
             node = NodeServer(node[0], self.file)
-    def startAllNodesTests(self, file, nodes_raw):
-        
-        for node in nodes_raw:
-            node = NodeServer(node[0], file)
-    
+
     def shutdownNode(self):
-        msg = Message(MessageType.shutdown, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht um den Startknoten zu beenden
+        '''
+        msg = Message(MessageType.shutdown, "Shutdown", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def shutdownAllNodes(self):
-        msg = Message(MessageType.shutdownAll, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten um alle Knoten zu beenden
+        '''
+        msg = Message(MessageType.shutdownAll, "Shutdown", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
-    
+   
     def sendRumour(self):
+        '''
+        sendet eine Geruecht zum Startknoten um es zu verbreiten
+        '''
         msg = Message(MessageType.spreadRumour, "Geiz ist Geil", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
+    def showTrustedMsgs(self):
+        '''
+        sendet eine Nachricht zum Startknoten um seine vertrauten Nachrichten auszugeben
+        '''
+        msg = Message(MessageType.trustMsg, "", 0, self.node_id)
+        nodist_helper.sendMsg(self.host, self.port, msg)
+        
     def sendPrintNeighbours(self):
-        msg = Message(MessageType.printNeighbours, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten um seine Nachbarn auszugeben
+        '''
+        msg = Message(MessageType.printNeighbours, "", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendIDs(self):
-        msg = Message(MessageType.sendID, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten um seinen Nachbarn seine ID zu senden
+        '''
+        msg = Message(MessageType.sendID, "", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendStatus(self):
-        msg = Message(MessageType.status, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten um seinen Status auszugeben
+        '''
+        msg = Message(MessageType.status, "", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
         
     def sendStatusServer(self):
-        msg = Message(MessageType.sendStatus, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten um seinen Status an den Testserver zu senden
+        '''
+        msg = Message(MessageType.sendStatus, "", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
-        
+
     def statusServer(self):
-        msg = Message(MessageType.status, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Testserver um seinen Status anauszugeben
+        '''
+        msg = Message(MessageType.status, "", 0, self.node_id)
         nodist_helper.sendMsg('localhost', 42222, msg)
-    
+  
+   
     def sendReset(self):
-        msg = Message(MessageType.reset, "Geiz ist Geil", 0, self.node_id)
+        '''
+        sendet eine Nachricht zum Startknoten zu resetten
+        '''
+        msg = Message(MessageType.reset, "", 0, self.node_id)
         nodist_helper.sendMsg(self.host, self.port, msg)
     
     def sendResetAll(self):
+        '''
+        sendet eine Nachricht zu allen Knoten  um sie zu resetten
+        '''
         for node in self.nodes_raw:
             node_id = node[0]
             host, port = nodist_helper.getAddress(self.nodes_raw, node_id)                        
-            msg = Message(MessageType.reset, "Geiz ist Geil", 0, self.node_id)
+            msg = Message(MessageType.reset, "", 0, self.node_id)
             nodist_helper.sendMsg(host, port, msg)
     
     
-    def getGraphFile(self):
-        pass
-    
     def graphgen(self):
-        nodist_helper.graphgen(self.nodes_raw, 190)
-    
-    def startTests(self):
-        self.startTestServer()
-        file = 'data5'
-        nodes_raw = nodist_helper.readFromFile(file)
-        m_max = (len(nodes_raw) * (len(nodes_raw)-1))/2
-        #nodist_helper.graphgen(nodes_raw, m_max)
-        time.sleep(1)
-        new_msg = Message(MessageType.startTest,(1,len(nodes_raw)), 0, self.node_id)
-        nodist_helper.sendMsg('localhost', 42222, new_msg)
-        time.sleep(1)
-        self.startAllNodesTests(file, nodes_raw)
+        '''
+        generiert einen neuen Graphen
+        '''
+        edges = int(input("Anzahl Kanten angeben:"))
+        nodist_helper.graphgen(self.nodes_raw, edges)
         
-        time.sleep(20)
-        self.sendRumour()
-        time.sleep(40)
-        self.sendStatusServer()
-        time.sleep(40)
-        self.shutdownAllNodes()
-        time.sleep(1)
 
-    
 
     def testServerHandler(self, msgs, data):
+        '''
+        Handler um die empfangenen Daten auszuwerten
+        '''
         msg = pickle.loads(data)
-    #msg.printMessage()
+        #msg.printMessage()
         table = '\n'
-        sum = 0
+        sum=0
         if msg.m_type == MessageType.status:
-            msgs_sort = sorted(msgs, key=lambda msg:msg.sender_nodeID)
-            for m in msgs_sort:
-                table += '\t' + str(m.sender_nodeID)
-            
-            table += '\n'
-            for m in msgs_sort:
-                table += '\t' + str(m.m[0])
-                sum += m.m[0]
-            
-            table += '\t' + str(sum)
-            table += '\n'
-            print(table)
+            if msgs == []:
+                print("Nothing received")
+            else:
+                msgs_sort = sorted(msgs, key=lambda msg:msg.sender_nodeID)
+                for m in msgs_sort:
+                    table += '\t' + str(m.sender_nodeID)
+                
+                table += '\n'
+                for m in msgs_sort:
+                    table += '\t' + str(m.m[0])
+                    sum += m.m[0]
+                
+                table += '\t' + str(sum)
+                table += '\n'
+                print(table)
+                del msgs[:]
+        if msg.m_type == MessageType.shutdown:
+            self.TestserverOnline = False
         else:
             msgs.append(msg)
+            
+    
 
     def startTestServer(self, start=True):
+        '''
+        Startet einen Testserver der von allen Knoten Daten empfaengt und sie zur Auswertung ausgibt
+        '''
         if start:
             start=False
+            self.TestserverOnline = True
             threading.Thread(target=self.startTestServer, args=(start,)).start()
         else:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 try: 
-                    host, port = 'localhost', 42222
+                    host, port = self.config['DEFAULT']['Testserver'], int(self.config['DEFAULT']['TestserverPort'])
                     print("Testserver wurde gestartet:" + host +' '+ str(port))
                     sock.bind((host, port))
                     sock.listen()
                     msgs = []
-                    while True:
+                    while self.TestserverOnline:
                         conn, addr = sock.accept()
                         with conn:
                             #print("Testserver Connected b"+ str(addr))
@@ -189,3 +222,12 @@ class NodistMenu(object):
                             # conn.send(b'Alles klar von Node '+ bytes(str(self.ID),'utf-8'))
                 finally:
                     sock.close()    
+                    
+                    
+    def shutdownServer(self):
+        '''
+        beendet den testserver
+        '''
+        self.TestserverOnline = False
+        msg = Message(MessageType.shutdown, "", 0, self.node_id)
+        nodist_helper.sendMsg(self.config['DEFAULT']['Testserver'], int(self.config['DEFAULT']['TestserverPort']), msg)
