@@ -1,3 +1,10 @@
+'''
+Nodist
+
+generiert graphen
+erstellt server als knoten
+'''
+
 import argparse
 import nodist_helper
 from node import NodeServer
